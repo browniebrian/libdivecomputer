@@ -780,6 +780,62 @@ suunto_eonsteel_device_set_directory_callback (dc_device_t *abstract, suunto_eon
 	return DC_STATUS_SUCCESS;
 }
 
+/*
+ * Get the clock of the dive computer. The replies use the same layout
+ * as the payload of the corresponding set commands, where the date
+ * commands use the first four bytes and the time commands the last
+ * four.
+ */
+static dc_status_t
+suunto_eonsteel_getclock(suunto_eonsteel_device_t *eon, dc_datetime_t *datetime)
+{
+	dc_status_t rc = DC_STATUS_SUCCESS;
+	unsigned char date[64], time[64];
+	unsigned int ndate = 0, ntime = 0;
+
+	rc = suunto_eonsteel_transfer(eon, CMD_GET_DATE, NULL, 0, date, sizeof(date), &ndate);
+	if (rc != DC_STATUS_SUCCESS) {
+		ERROR(eon->base.context, "unable to read the date");
+		return rc;
+	}
+	HEXDUMP(eon->base.context, DC_LOGLEVEL_DEBUG, "GET_DATE", date, ndate);
+
+	rc = suunto_eonsteel_transfer(eon, CMD_GET_TIME, NULL, 0, time, sizeof(time), &ntime);
+	if (rc != DC_STATUS_SUCCESS) {
+		ERROR(eon->base.context, "unable to read the time");
+		return rc;
+	}
+	HEXDUMP(eon->base.context, DC_LOGLEVEL_DEBUG, "GET_TIME", time, ntime);
+
+	if (ndate < 8 || ntime < 8) {
+		ERROR(eon->base.context, "Invalid clock reply (%u %u).", ndate, ntime);
+		return DC_STATUS_PROTOCOL;
+	}
+
+	datetime->year     = array_uint16_le(date);
+	datetime->month    = date[2];
+	datetime->day      = date[3];
+	datetime->hour     = time[4];
+	datetime->minute   = time[5];
+	datetime->second   = array_uint16_le(time + 6) / 1000;
+	datetime->timezone = DC_TIMEZONE_NONE;
+
+	/*
+	 * Deliberately no check on the year. A dive computer which lost
+	 * its clock reports a date far in the past, and that is exactly
+	 * what the application needs to know.
+	 */
+	if (datetime->month < 1 || datetime->month > 12 ||
+		datetime->day < 1 || datetime->day > 31 ||
+		datetime->hour > 23 || datetime->minute > 59 ||
+		datetime->second > 59) {
+		ERROR(eon->base.context, "Invalid clock value.");
+		return DC_STATUS_DATAFORMAT;
+	}
+
+	return DC_STATUS_SUCCESS;
+}
+
 static dc_status_t
 suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callback, void *userdata)
 {
@@ -800,6 +856,21 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 	devinfo.firmware = array_uint32_be (eon->version + 0x20);
 	devinfo.serial = array_convert_str2num(eon->version + 0x10, 16);
 	device_event_emit (abstract, DC_EVENT_DEVINFO, &devinfo);
+
+	/*
+	 * Emit a clock event. The clock is only informational here, so a
+	 * failure to read it should not abort the download.
+	 */
+	dc_datetime_t devtime;
+	if (suunto_eonsteel_getclock(eon, &devtime) == DC_STATUS_SUCCESS) {
+		dc_ticks_t ticks = dc_datetime_mktime(&devtime);
+		if (ticks >= 0) {
+			dc_event_clock_t clock;
+			clock.devtime = (unsigned int) ticks;
+			clock.systime = dc_datetime_now();
+			device_event_emit(abstract, DC_EVENT_CLOCK, &clock);
+		}
+	}
 
 	rc = get_file_list(eon, &de);
 	if (rc != DC_STATUS_SUCCESS)
