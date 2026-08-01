@@ -31,6 +31,8 @@
 #include "checksum.h"
 #include "hdlc.h"
 
+#define ISINSTANCE(device) dc_device_isinstance((device), &suunto_eonsteel_device_vtable)
+
 #define EONSTEEL 0
 #define EONCORE  1
 
@@ -42,6 +44,8 @@ typedef struct suunto_eonsteel_device_t {
 	unsigned short seq;
 	unsigned char version[0x30];
 	unsigned char fingerprint[4];
+	suunto_eonsteel_filter_t filter_callback;
+	void *filter_userdata;
 } suunto_eonsteel_device_t;
 
 // The EON Steel implements a small filesystem
@@ -633,6 +637,8 @@ suunto_eonsteel_device_open(dc_device_t **out, dc_context_t *context, dc_iostrea
 	eon->seq = INIT_SEQ;
 	memset (eon->version, 0, sizeof (eon->version));
 	memset (eon->fingerprint, 0, sizeof (eon->fingerprint));
+	eon->filter_callback = NULL;
+	eon->filter_userdata = NULL;
 
 	if (transport == DC_TRANSPORT_BLE) {
 		status = dc_hdlc_open (&eon->iostream, context, iostream, 20, 20);
@@ -695,6 +701,20 @@ suunto_eonsteel_device_set_fingerprint (dc_device_t *abstract, const unsigned ch
 		memcpy (device->fingerprint, data, sizeof (device->fingerprint));
 	else
 		memset (device->fingerprint, 0, sizeof (device->fingerprint));
+
+	return DC_STATUS_SUCCESS;
+}
+
+dc_status_t
+suunto_eonsteel_device_set_filter (dc_device_t *abstract, suunto_eonsteel_filter_t filter, void *userdata)
+{
+	suunto_eonsteel_device_t *device = (suunto_eonsteel_device_t *) abstract;
+
+	if (!ISINSTANCE (abstract))
+		return DC_STATUS_INVALIDARGS;
+
+	device->filter_callback = filter;
+	device->filter_userdata = userdata;
 
 	return DC_STATUS_SUCCESS;
 }
@@ -769,6 +789,10 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 				skip = 1;
 				break;
 			}
+
+			// Skip the dives which have already been downloaded.
+			if (eon->filter_callback && eon->filter_callback(buf, sizeof(buf), eon->filter_userdata))
+				break;
 
 			len = dc_platform_snprintf(pathname, sizeof(pathname), "%s/%s", dive_directory, de->name);
 			if (len < 0 || (unsigned int) len >= sizeof(pathname)) {
