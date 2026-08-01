@@ -32,6 +32,10 @@ extern "C" {
 /*
  * Decide whether a dive still needs to be downloaded, based on its
  * fingerprint alone. Returns a non-zero value to skip the dive.
+ *
+ * The filter is invoked once for every dive, before the first dive is
+ * transferred, because the progress events are based on the number of
+ * dives which have to be downloaded.
  */
 typedef int (*suunto_eonsteel_filter_t) (const unsigned char fingerprint[], unsigned int size, void *userdata);
 
