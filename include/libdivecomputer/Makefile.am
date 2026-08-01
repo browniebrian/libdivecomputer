@@ -22,6 +22,7 @@ libdivecomputer_HEADERS = 	\
 	suunto_eon.h \
 	suunto_vyper2.h  \
 	suunto_d9.h \
+	suunto_eonsteel.h \
 	reefnet_sensus.h \
 	reefnet_sensuspro.h \
 	reefnet_sensusultra.h \
