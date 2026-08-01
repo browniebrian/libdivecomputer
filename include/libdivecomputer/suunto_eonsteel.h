@@ -1,7 +1,7 @@
 /*
  * libdivecomputer
  *
- * Copyright (C) 2014 Linus Torvalds
+ * Copyright (C) 2026 Brian Groskamp
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -19,26 +19,26 @@
  * MA 02110-1301 USA
  */
 
-#ifndef SUUNTO_EONSTEEL_H
-#define SUUNTO_EONSTEEL_H
+#ifndef DC_SUUNTO_EONSTEEL_H
+#define DC_SUUNTO_EONSTEEL_H
 
-#include <libdivecomputer/context.h>
-#include <libdivecomputer/iostream.h>
-#include <libdivecomputer/device.h>
-#include <libdivecomputer/parser.h>
-#include <libdivecomputer/suunto_eonsteel.h>
+#include "common.h"
+#include "device.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-dc_status_t
-suunto_eonsteel_device_open(dc_device_t **device, dc_context_t *context, dc_iostream_t *iostream, unsigned int model);
+/*
+ * Decide whether a dive still needs to be downloaded, based on its
+ * fingerprint alone. Returns a non-zero value to skip the dive.
+ */
+typedef int (*suunto_eonsteel_filter_t) (const unsigned char fingerprint[], unsigned int size, void *userdata);
 
 dc_status_t
-suunto_eonsteel_parser_create(dc_parser_t **parser, dc_context_t *context, const unsigned char data[], size_t size, unsigned int model);
+suunto_eonsteel_device_set_filter (dc_device_t *device, suunto_eonsteel_filter_t filter, void *userdata);
 
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
-#endif /* SUUNTO_EONSTEEL_H */
+#endif /* DC_SUUNTO_EONSTEEL_H */
