@@ -56,6 +56,7 @@ struct directory_entry {
 	struct directory_entry *next;
 	int type;
 	int namelen;
+	int download;
 	char name[1];
 };
 
@@ -122,6 +123,7 @@ static struct directory_entry *alloc_dirent(int type, int len, const char *name)
 		res->next = NULL;
 		res->type = type;
 		res->namelen = len;
+		res->download = 0;
 		memcpy(res->name, name, len);
 		res->name[len] = 0;
 	}
@@ -604,14 +606,44 @@ get_file_list(suunto_eonsteel_device_t *eon, struct directory_entry **res)
 	return DC_STATUS_SUCCESS;
 }
 
-static int
-count_file_list(struct directory_entry *list)
+/*
+ * Decide which dives have to be downloaded, and return how many there
+ * are. The fingerprint terminates the enumeration, while the filter
+ * only skips a single dive.
+ *
+ * Dives with a malformed name are marked for download, so that the
+ * download loop reports the error.
+ */
+static unsigned int
+mark_file_list(suunto_eonsteel_device_t *eon, struct directory_entry *list)
 {
-	int count = 0;
+	struct directory_entry *de;
+	unsigned int count = 0;
+	int skip = 0;
 
-	while (list) {
+	for (de = list; de; de = de->next) {
+		unsigned int time;
+		unsigned char buf[4];
+
+		de->download = 0;
+
+		if (skip || de->type != DIRTYPE_FILE)
+			continue;
+
+		if (sscanf(de->name, "%x.LOG", &time) == 1) {
+			array_uint32_le_set(buf, time);
+
+			if (memcmp (buf, eon->fingerprint, sizeof (eon->fingerprint)) == 0) {
+				skip = 1;
+				continue;
+			}
+
+			if (eon->filter_callback && eon->filter_callback(buf, sizeof(buf), eon->filter_userdata))
+				continue;
+		}
+
+		de->download = 1;
 		count++;
-		list = list->next;
 	}
 
 	return count;
@@ -754,9 +786,10 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 		return DC_STATUS_NOMEMORY;
 	}
 
-	progress.maximum = count_file_list(de);
+	progress.maximum = mark_file_list(eon, de);
 	progress.current = 0;
-	device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
+	if (progress.maximum)
+		device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
 
 	while (de) {
 		int len;
@@ -775,7 +808,7 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 			/* Ignore subdirectories in the dive directory */
 			break;
 		case DIRTYPE_FILE:
-			if (skip)
+			if (skip || !de->download)
 				break;
 
 			if (sscanf(de->name, "%x.LOG", &time) != 1) {
@@ -784,15 +817,6 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 			}
 
 			array_uint32_le_set(buf, time);
-
-			if (memcmp (buf, eon->fingerprint, sizeof (eon->fingerprint)) == 0) {
-				skip = 1;
-				break;
-			}
-
-			// Skip the dives which have already been downloaded.
-			if (eon->filter_callback && eon->filter_callback(buf, sizeof(buf), eon->filter_userdata))
-				break;
 
 			len = dc_platform_snprintf(pathname, sizeof(pathname), "%s/%s", dive_directory, de->name);
 			if (len < 0 || (unsigned int) len >= sizeof(pathname)) {
@@ -814,11 +838,14 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 			data = dc_buffer_get_data(file);
 			size = dc_buffer_get_size(file);
 
-			if (callback && !callback(data, size, data, sizeof(eon->fingerprint), userdata))
+			if (callback && !callback(data, size, data, sizeof(eon->fingerprint), userdata)) {
 				skip = 1;
+				break;
+			}
+
+			progress.current++;
+			device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
 		}
-		progress.current++;
-		device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
 
 		free(de);
 		de = next;
