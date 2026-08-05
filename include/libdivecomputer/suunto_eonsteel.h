@@ -42,6 +42,22 @@ typedef int (*suunto_eonsteel_filter_t) (const unsigned char fingerprint[], unsi
 dc_status_t
 suunto_eonsteel_device_set_filter (dc_device_t *device, suunto_eonsteel_filter_t filter, void *userdata);
 
+/*
+ * Report how large the dive directory is, and how much of it will be
+ * downloaded, once both are known.
+ *
+ * The progress events count only the dives which have to be downloaded, so
+ * they cannot say how far through the computer's own library a resume has
+ * got. This is invoked exactly once per enumeration, after the directory has
+ * been read and marked and before the first dive is transferred, with the
+ * number of dives the computer holds and the number of those which will be
+ * fetched.
+ */
+typedef void (*suunto_eonsteel_directory_t) (unsigned int stored, unsigned int downloading, void *userdata);
+
+dc_status_t
+suunto_eonsteel_device_set_directory_callback (dc_device_t *device, suunto_eonsteel_directory_t callback, void *userdata);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
