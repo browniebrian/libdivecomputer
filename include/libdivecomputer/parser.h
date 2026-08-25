@@ -66,6 +66,15 @@ typedef enum dc_field_type_t {
 	DC_FIELD_DIVEMODE,
 	DC_FIELD_DECOMODEL,
 	DC_FIELD_LOCATION,
+
+	/*
+	 * Fields this fork adds on top of upstream. They start far above the
+	 * upstream range so that appending upstream fields can never renumber
+	 * them, and so a backend that never heard of them keeps falling through
+	 * to DC_STATUS_UNSUPPORTED.
+	 */
+	DC_FIELD_BATTERY_AT_START = 0x1000,
+	DC_FIELD_BATTERY_AT_END,
 } dc_field_type_t;
 
 typedef enum parser_sample_event_t {
@@ -142,6 +151,16 @@ typedef struct dc_salinity_t {
 	dc_water_t type;
 	double density;
 } dc_salinity_t;
+
+/*
+ * A battery reading taken at one end of a dive. The percentage is the
+ * charge the device reports; the millivolt is the cell voltage behind it,
+ * and is zero when the device reported a charge but no voltage.
+ */
+typedef struct dc_battery_t {
+	unsigned int percentage; /* 0-100 */
+	unsigned int millivolt;  /* 0 if not reported */
+} dc_battery_t;
 
 typedef enum dc_usage_t {
 	DC_USAGE_NONE,
