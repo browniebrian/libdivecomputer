@@ -74,6 +74,7 @@ struct type_desc {
 // cannot share the "initialized" bitmask and carry their own.
 #define EON_HAVE_BATTERY_AT_START (1 << 0)
 #define EON_HAVE_BATTERY_AT_END   (1 << 1)
+#define EON_HAVE_SERIAL_NUMBER    (1 << 2)
 
 typedef struct suunto_eonsteel_parser_t {
 	dc_parser_t base;
@@ -84,6 +85,7 @@ typedef struct suunto_eonsteel_parser_t {
 		unsigned int have;
 		dc_battery_t battery_at_start;
 		dc_battery_t battery_at_end;
+		dc_serial_number_t serial_number;
 		unsigned int divetime;
 		double maxdepth;
 		double avgdepth;
@@ -1058,6 +1060,11 @@ suunto_eonsteel_parser_get_field(dc_parser_t *parser, dc_field_type_t type, unsi
 			return DC_STATUS_UNSUPPORTED;
 		field_value(value, eon->cache.battery_at_end);
 		return DC_STATUS_SUCCESS;
+	case DC_FIELD_SERIAL_NUMBER:
+		if (!(eon->cache.have & EON_HAVE_SERIAL_NUMBER))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.serial_number);
+		return DC_STATUS_SUCCESS;
 	default:
 		break;
 	}
@@ -1283,6 +1290,32 @@ static float get_le32_float(const unsigned char *src)
  * charge, which is the shape the field name promises. Anything we cannot
  * make a charge out of is dropped rather than guessed at.
  */
+/*
+ * The serial number is a plain string, and the device writes it out in full.
+ *
+ * Copy it against an explicit bound. The entry is not guaranteed to be
+ * terminated within its own length, and a serial too long for the buffer is
+ * dropped rather than truncated, because half a serial names the wrong
+ * device rather than no device at all.
+ */
+static int parse_serial_number(const unsigned char *data, int len, dc_serial_number_t *serial)
+{
+	int i;
+
+	memset(serial, 0, sizeof(*serial));
+
+	for (i = 0; i < len && data[i]; i++) {
+		if (i >= (int) sizeof(serial->value) - 1)
+			return -1;
+		serial->value[i] = data[i];
+	}
+
+	if (i == 0)
+		return -1;
+
+	return 0;
+}
+
 static int parse_battery(const unsigned char *data, int len, dc_battery_t *battery)
 {
 	dc_battery_t result = {0, 0};
@@ -1355,6 +1388,12 @@ static int traverse_device_fields(suunto_eonsteel_parser_t *eon, const struct ty
 	if (!strcmp(name, "Info.BatteryAtEnd")) {
 		if (!parse_battery(data, len, &eon->cache.battery_at_end))
 			eon->cache.have |= EON_HAVE_BATTERY_AT_END;
+		return 0;
+	}
+
+	if (!strcmp(name, "SerialNumber")) {
+		if (!parse_serial_number(data, len, &eon->cache.serial_number))
+			eon->cache.have |= EON_HAVE_SERIAL_NUMBER;
 		return 0;
 	}
 

@@ -75,6 +75,7 @@ typedef enum dc_field_type_t {
 	 */
 	DC_FIELD_BATTERY_AT_START = 0x1000,
 	DC_FIELD_BATTERY_AT_END,
+	DC_FIELD_SERIAL_NUMBER,
 } dc_field_type_t;
 
 typedef enum parser_sample_event_t {
@@ -161,6 +162,24 @@ typedef struct dc_battery_t {
 	unsigned int percentage; /* 0-100 */
 	unsigned int millivolt;  /* 0 if not reported */
 } dc_battery_t;
+
+#define DC_SERIAL_NUMBER_SIZE 32
+
+/*
+ * The serial number a device wrote into the dive itself, as text.
+ *
+ * This is not always the same number as dc_event_devinfo_t::serial. That
+ * field is 32 bits wide, and a device whose serial does not fit reports it
+ * reduced modulo 2^32: the Suunto D5 records "230910002279" in every dive
+ * file while announcing 3276735591 over the wire. Neither is wrong, but only
+ * one of them is the number printed on the device.
+ *
+ * A fixed buffer rather than a pointer, so the value has the same lifetime
+ * as every other field and raises no question about who frees it.
+ */
+typedef struct dc_serial_number_t {
+	char value[DC_SERIAL_NUMBER_SIZE]; /* NUL-terminated */
+} dc_serial_number_t;
 
 typedef enum dc_usage_t {
 	DC_USAGE_NONE,
