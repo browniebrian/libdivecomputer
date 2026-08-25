@@ -339,6 +339,20 @@ typedef union dc_sample_value_t {
 		unsigned int time;
 		unsigned int flags;
 		unsigned int value;
+		/*
+		 * The name the device gave this event, or NULL when the
+		 * backend was not told one.
+		 *
+		 * Some devices enumerate their own events in the dive and
+		 * name more of them than parser_sample_event_t can express.
+		 * The name keeps what the type has to round off, and is the
+		 * only description of an event whose type is
+		 * SAMPLE_EVENT_NONE.
+		 *
+		 * It points into storage owned by the parser and is valid
+		 * only for the duration of the callback.
+		 */
+		const char *name;
 	} event;
 	unsigned int rbt;
 	unsigned int heartbeat;

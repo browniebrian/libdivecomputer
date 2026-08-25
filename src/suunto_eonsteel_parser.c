@@ -715,10 +715,16 @@ static void sample_event_state_value(const struct type_desc *desc, struct sample
 	if (!name)
 		return;
 
+	/*
+	 * The device enumerates its own events in the dive file and names
+	 * more of them than parser_sample_event_t can express. Report the
+	 * name alongside the type, and report the event even when no type
+	 * fits: "Gas Available" happened whether or not there is a
+	 * SAMPLE_EVENT_ for it. A consumer reading only the type still sees
+	 * exactly what it saw before.
+	 */
 	sample.event.type = lookup_event(name, states, C_ARRAY_SIZE(states));
-	if (sample.event.type == SAMPLE_EVENT_NONE)
-		return;
-
+	sample.event.name = name;
 	sample.event.flags = value ? SAMPLE_FLAGS_BEGIN : SAMPLE_FLAGS_END;
 	if (info->callback) info->callback(DC_SAMPLE_EVENT, &sample, info->userdata);
 }
@@ -758,9 +764,7 @@ static void sample_event_notify_value(const struct type_desc *desc, struct sampl
 		return;
 
 	sample.event.type = lookup_event(name, notifications, C_ARRAY_SIZE(notifications));
-	if (sample.event.type == SAMPLE_EVENT_NONE)
-		return;
-
+	sample.event.name = name;
 	sample.event.flags = value ? SAMPLE_FLAGS_BEGIN : SAMPLE_FLAGS_END;
 	if (info->callback) info->callback(DC_SAMPLE_EVENT, &sample, info->userdata);
 }
@@ -798,9 +802,7 @@ static void sample_event_warning_value(const struct type_desc *desc, struct samp
 		return;
 
 	sample.event.type = lookup_event(name, warnings, C_ARRAY_SIZE(warnings));
-	if (sample.event.type == SAMPLE_EVENT_NONE)
-		return;
-
+	sample.event.name = name;
 	sample.event.flags = value ? SAMPLE_FLAGS_BEGIN : SAMPLE_FLAGS_END;
 	if (info->callback) info->callback(DC_SAMPLE_EVENT, &sample, info->userdata);
 }
@@ -831,9 +833,7 @@ static void sample_event_alarm_value(const struct type_desc *desc, struct sample
 		return;
 
 	sample.event.type = lookup_event(name, alarms, C_ARRAY_SIZE(alarms));
-	if (sample.event.type == SAMPLE_EVENT_NONE)
-		return;
-
+	sample.event.name = name;
 	sample.event.flags = value ? SAMPLE_FLAGS_BEGIN : SAMPLE_FLAGS_END;
 	if (info->callback) info->callback(DC_SAMPLE_EVENT, &sample, info->userdata);
 }
