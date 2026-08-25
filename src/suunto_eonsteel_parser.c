@@ -78,6 +78,8 @@ struct type_desc {
 #define EON_HAVE_NOFLY_TIME        (1 << 3)
 #define EON_HAVE_DESATURATION_TIME (1 << 4)
 #define EON_HAVE_SURFACE_TIME      (1 << 5)
+#define EON_HAVE_TISSUES_AT_START  (1 << 6)
+#define EON_HAVE_TISSUES_AT_END    (1 << 7)
 
 typedef struct suunto_eonsteel_parser_t {
 	dc_parser_t base;
@@ -92,6 +94,8 @@ typedef struct suunto_eonsteel_parser_t {
 		unsigned int nofly_time;
 		unsigned int desaturation_time;
 		unsigned int surface_time;
+		dc_tissues_t tissues_at_start;
+		dc_tissues_t tissues_at_end;
 		unsigned int divetime;
 		double maxdepth;
 		double avgdepth;
@@ -1086,6 +1090,16 @@ suunto_eonsteel_parser_get_field(dc_parser_t *parser, dc_field_type_t type, unsi
 			return DC_STATUS_UNSUPPORTED;
 		field_value(value, eon->cache.surface_time);
 		return DC_STATUS_SUCCESS;
+	case DC_FIELD_TISSUES_AT_START:
+		if (!(eon->cache.have & EON_HAVE_TISSUES_AT_START))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.tissues_at_start);
+		return DC_STATUS_SUCCESS;
+	case DC_FIELD_TISSUES_AT_END:
+		if (!(eon->cache.have & EON_HAVE_TISSUES_AT_END))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.tissues_at_end);
+		return DC_STATUS_SUCCESS;
 	default:
 		break;
 	}
@@ -1496,6 +1510,62 @@ static int traverse_gas_fields(suunto_eonsteel_parser_t *eon, const struct type_
 //   EndTissue.Helium+Pressure (uint32)
 //   EndTissue.RgbmNitrogen (float32,precision=3)
 //   EndTissue.RgbmHelium (float32,precision=3)
+/*
+ * "StartTissue" and "EndTissue" spell out the same seven values at either end
+ * of the dive, so one reader serves both. It answers whether the name was one
+ * it knows, which is what tells the caller there is a tissue set to report.
+ */
+static int traverse_tissue_fields(dc_tissues_t *tissues, const char *name,
+                                  const unsigned char *data, int len)
+{
+	if (len < 4)
+		return 0;
+
+	if (!strcmp(name, "CNS")) {
+		tissues->cns = get_le32_float(data);
+		tissues->flags |= DC_TISSUES_CNS;
+		return 1;
+	}
+
+	if (!strcmp(name, "OTU")) {
+		tissues->otu = get_le32_float(data);
+		tissues->flags |= DC_TISSUES_OTU;
+		return 1;
+	}
+
+	if (!strcmp(name, "OLF")) {
+		tissues->olf = get_le32_float(data);
+		tissues->flags |= DC_TISSUES_OLF;
+		return 1;
+	}
+
+	if (!strcmp(name, "Nitrogen+Pressure")) {
+		tissues->nitrogen_pressure = array_uint32_le(data);
+		tissues->flags |= DC_TISSUES_NITROGEN_PRESSURE;
+		return 1;
+	}
+
+	if (!strcmp(name, "Helium+Pressure")) {
+		tissues->helium_pressure = array_uint32_le(data);
+		tissues->flags |= DC_TISSUES_HELIUM_PRESSURE;
+		return 1;
+	}
+
+	if (!strcmp(name, "RgbmNitrogen")) {
+		tissues->rgbm_nitrogen = get_le32_float(data);
+		tissues->flags |= DC_TISSUES_RGBM_NITROGEN;
+		return 1;
+	}
+
+	if (!strcmp(name, "RgbmHelium")) {
+		tissues->rgbm_helium = get_le32_float(data);
+		tissues->flags |= DC_TISSUES_RGBM_HELIUM;
+		return 1;
+	}
+
+	return 0;
+}
+
 static int traverse_diving_fields(suunto_eonsteel_parser_t *eon, const struct type_desc *desc,
                                   const unsigned char *data, int len)
 {
@@ -1503,6 +1573,18 @@ static int traverse_diving_fields(suunto_eonsteel_parser_t *eon, const struct ty
 
 	if (!strncmp(name, "Gases", 5))
 		return traverse_gas_fields(eon, desc, data, len);
+
+	if (!strncmp(name, "StartTissue.", 12)) {
+		if (traverse_tissue_fields(&eon->cache.tissues_at_start, name + 12, data, len))
+			eon->cache.have |= EON_HAVE_TISSUES_AT_START;
+		return 0;
+	}
+
+	if (!strncmp(name, "EndTissue.", 10)) {
+		if (traverse_tissue_fields(&eon->cache.tissues_at_end, name + 10, data, len))
+			eon->cache.have |= EON_HAVE_TISSUES_AT_END;
+		return 0;
+	}
 
 	if (!strcmp(name, "SurfacePressure")) {
 		unsigned int pressure = array_uint32_le(data); // in SI units - Pascal

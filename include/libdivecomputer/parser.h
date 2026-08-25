@@ -79,6 +79,8 @@ typedef enum dc_field_type_t {
 	DC_FIELD_NOFLY_TIME,         /* Seconds */
 	DC_FIELD_DESATURATION_TIME,  /* Seconds */
 	DC_FIELD_SURFACE_TIME,       /* Seconds */
+	DC_FIELD_TISSUES_AT_START,
+	DC_FIELD_TISSUES_AT_END,
 } dc_field_type_t;
 
 typedef enum parser_sample_event_t {
@@ -183,6 +185,41 @@ typedef struct dc_battery_t {
 typedef struct dc_serial_number_t {
 	char value[DC_SERIAL_NUMBER_SIZE]; /* NUL-terminated */
 } dc_serial_number_t;
+
+/*
+ * Which members of a dc_tissues_t the device actually stated.
+ *
+ * Devices differ widely in how much of their decompression state they write
+ * down, so a member that was never reported is not the same as one reported
+ * as zero: a helium loading of zero is a reading on an air dive, and an
+ * absent one is not a reading at all.
+ */
+#define DC_TISSUES_CNS               (1 << 0)
+#define DC_TISSUES_OTU               (1 << 1)
+#define DC_TISSUES_OLF               (1 << 2)
+#define DC_TISSUES_NITROGEN_PRESSURE (1 << 3)
+#define DC_TISSUES_HELIUM_PRESSURE   (1 << 4)
+#define DC_TISSUES_RGBM_NITROGEN     (1 << 5)
+#define DC_TISSUES_RGBM_HELIUM       (1 << 6)
+
+/*
+ * The decompression state a device carried into a dive, or was left with at
+ * the end of one — the algorithm's own working memory, which is the part of
+ * a dive that outlives it and constrains the next one.
+ *
+ * A backend fills in the members it is told and names them in flags. Every
+ * other member is left at zero and means nothing.
+ */
+typedef struct dc_tissues_t {
+	unsigned int flags;             /* DC_TISSUES_* for the members set below */
+	double cns;                     /* Fraction, 1.0 is 100% */
+	double otu;                     /* OTU */
+	double olf;                     /* Oxygen limit fraction, 1.0 is 100% */
+	unsigned int nitrogen_pressure; /* Pa */
+	unsigned int helium_pressure;   /* Pa */
+	double rgbm_nitrogen;           /* Dimensionless model factor */
+	double rgbm_helium;             /* Dimensionless model factor */
+} dc_tissues_t;
 
 typedef enum dc_usage_t {
 	DC_USAGE_NONE,
