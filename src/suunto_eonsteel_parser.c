@@ -70,12 +70,20 @@ struct type_desc {
 #define MAXTYPE 512
 #define MAXGASES 16
 
+// The fork's own fields sit above the upstream DC_FIELD range, so they
+// cannot share the "initialized" bitmask and carry their own.
+#define EON_HAVE_BATTERY_AT_START (1 << 0)
+#define EON_HAVE_BATTERY_AT_END   (1 << 1)
+
 typedef struct suunto_eonsteel_parser_t {
 	dc_parser_t base;
 	struct type_desc type_desc[MAXTYPE];
 	// field cache
 	struct {
 		unsigned int initialized;
+		unsigned int have;
+		dc_battery_t battery_at_start;
+		dc_battery_t battery_at_end;
 		unsigned int divetime;
 		double maxdepth;
 		double avgdepth;
@@ -1037,7 +1045,24 @@ suunto_eonsteel_parser_get_field(dc_parser_t *parser, dc_field_type_t type, unsi
 
 	suunto_eonsteel_parser_t *eon = (suunto_eonsteel_parser_t *)parser;
 
-	if (!(eon->cache.initialized & (1 << type)))
+	// The fork's own fields are numbered past the "initialized" bitmask,
+	// so they answer before it and keep the shift below in range.
+	switch (type) {
+	case DC_FIELD_BATTERY_AT_START:
+		if (!(eon->cache.have & EON_HAVE_BATTERY_AT_START))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.battery_at_start);
+		return DC_STATUS_SUCCESS;
+	case DC_FIELD_BATTERY_AT_END:
+		if (!(eon->cache.have & EON_HAVE_BATTERY_AT_END))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.battery_at_end);
+		return DC_STATUS_SUCCESS;
+	default:
+		break;
+	}
+
+	if (type >= 32 || !(eon->cache.initialized & (1 << type)))
 		return DC_STATUS_UNSUPPORTED;
 
 	switch (type) {
@@ -1248,9 +1273,91 @@ static float get_le32_float(const unsigned char *src)
 //   Info.SW
 //   Name
 //   SerialNumber
+/*
+ * The battery fields are a sentence rather than a number:
+ *
+ *   "Charge: 98%, Voltage: 4.282V"
+ *
+ * so read every number in the string and let the unit that follows say what
+ * the number was. A lone number carrying no unit at all is taken as the
+ * charge, which is the shape the field name promises. Anything we cannot
+ * make a charge out of is dropped rather than guessed at.
+ */
+static int parse_battery(const unsigned char *data, int len, dc_battery_t *battery)
+{
+	dc_battery_t result = {0, 0};
+	double bare = 0.0;
+	int nbare = 0, charged = 0;
+	int i = 0;
+
+	while (i < len && data[i]) {
+		double value;
+
+		if (!isdigit(data[i])) {
+			i++;
+			continue;
+		}
+
+		value = 0.0;
+		while (i < len && isdigit(data[i]))
+			value = value * 10 + (data[i++] - '0');
+
+		if (i < len && data[i] == '.') {
+			double scale = 0.1;
+			i++;
+			while (i < len && isdigit(data[i])) {
+				value += (data[i++] - '0') * scale;
+				scale /= 10;
+			}
+		}
+
+		while (i < len && data[i] == ' ')
+			i++;
+
+		if (i < len && data[i] == '%') {
+			if (value > 100)
+				return -1;
+			result.percentage = (unsigned int) (value + 0.5);
+			charged = 1;
+			i++;
+		} else if (i < len && (data[i] == 'V' || data[i] == 'v')) {
+			// A cell this far outside lithium range is not a voltage.
+			if (value <= 20)
+				result.millivolt = (unsigned int) (value * 1000 + 0.5);
+			i++;
+		} else {
+			bare = value;
+			nbare++;
+		}
+	}
+
+	if (!charged) {
+		if (nbare != 1 || bare > 100)
+			return -1;
+		result.percentage = (unsigned int) (bare + 0.5);
+	}
+
+	*battery = result;
+	return 0;
+}
+
 static int traverse_device_fields(suunto_eonsteel_parser_t *eon, const struct type_desc *desc,
                                   const unsigned char *data, int len)
 {
+	const char *name = desc->desc + strlen("sml.DeviceLog.Device.");
+
+	if (!strcmp(name, "Info.BatteryAtStart")) {
+		if (!parse_battery(data, len, &eon->cache.battery_at_start))
+			eon->cache.have |= EON_HAVE_BATTERY_AT_START;
+		return 0;
+	}
+
+	if (!strcmp(name, "Info.BatteryAtEnd")) {
+		if (!parse_battery(data, len, &eon->cache.battery_at_end))
+			eon->cache.have |= EON_HAVE_BATTERY_AT_END;
+		return 0;
+	}
+
 	return 0;
 }
 
