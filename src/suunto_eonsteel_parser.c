@@ -1681,6 +1681,16 @@ static int traverse_header_fields(suunto_eonsteel_parser_t *eon, const struct ty
 		return 0;
 	}
 
+	// The device states the average itself, having seen every sample it
+	// took rather than only the ones it wrote down.
+	if (!strcmp(name, "Depth.Avg")) {
+		if (len < 4)
+			return 0;
+		eon->cache.avgdepth = get_le32_float(data);
+		eon->cache.initialized |= 1 << DC_FIELD_AVGDEPTH;
+		return 0;
+	}
+
 	return 0;
 }
 
