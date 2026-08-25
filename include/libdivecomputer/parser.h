@@ -76,6 +76,9 @@ typedef enum dc_field_type_t {
 	DC_FIELD_BATTERY_AT_START = 0x1000,
 	DC_FIELD_BATTERY_AT_END,
 	DC_FIELD_SERIAL_NUMBER,
+	DC_FIELD_NOFLY_TIME,         /* Seconds */
+	DC_FIELD_DESATURATION_TIME,  /* Seconds */
+	DC_FIELD_SURFACE_TIME,       /* Seconds */
 } dc_field_type_t;
 
 typedef enum parser_sample_event_t {

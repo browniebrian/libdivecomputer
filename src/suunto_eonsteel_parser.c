@@ -72,9 +72,12 @@ struct type_desc {
 
 // The fork's own fields sit above the upstream DC_FIELD range, so they
 // cannot share the "initialized" bitmask and carry their own.
-#define EON_HAVE_BATTERY_AT_START (1 << 0)
-#define EON_HAVE_BATTERY_AT_END   (1 << 1)
-#define EON_HAVE_SERIAL_NUMBER    (1 << 2)
+#define EON_HAVE_BATTERY_AT_START  (1 << 0)
+#define EON_HAVE_BATTERY_AT_END    (1 << 1)
+#define EON_HAVE_SERIAL_NUMBER     (1 << 2)
+#define EON_HAVE_NOFLY_TIME        (1 << 3)
+#define EON_HAVE_DESATURATION_TIME (1 << 4)
+#define EON_HAVE_SURFACE_TIME      (1 << 5)
 
 typedef struct suunto_eonsteel_parser_t {
 	dc_parser_t base;
@@ -86,6 +89,9 @@ typedef struct suunto_eonsteel_parser_t {
 		dc_battery_t battery_at_start;
 		dc_battery_t battery_at_end;
 		dc_serial_number_t serial_number;
+		unsigned int nofly_time;
+		unsigned int desaturation_time;
+		unsigned int surface_time;
 		unsigned int divetime;
 		double maxdepth;
 		double avgdepth;
@@ -1065,6 +1071,21 @@ suunto_eonsteel_parser_get_field(dc_parser_t *parser, dc_field_type_t type, unsi
 			return DC_STATUS_UNSUPPORTED;
 		field_value(value, eon->cache.serial_number);
 		return DC_STATUS_SUCCESS;
+	case DC_FIELD_NOFLY_TIME:
+		if (!(eon->cache.have & EON_HAVE_NOFLY_TIME))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.nofly_time);
+		return DC_STATUS_SUCCESS;
+	case DC_FIELD_DESATURATION_TIME:
+		if (!(eon->cache.have & EON_HAVE_DESATURATION_TIME))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.desaturation_time);
+		return DC_STATUS_SUCCESS;
+	case DC_FIELD_SURFACE_TIME:
+		if (!(eon->cache.have & EON_HAVE_SURFACE_TIME))
+			return DC_STATUS_UNSUPPORTED;
+		field_value(value, eon->cache.surface_time);
+		return DC_STATUS_SUCCESS;
 	default:
 		break;
 	}
@@ -1467,6 +1488,7 @@ static int traverse_gas_fields(suunto_eonsteel_parser_t *eon, const struct type_
 //   AlgorithmBottomMixture.Oxygen (uint8,precision=2)
 //   AlgorithmBottomMixture.Helium (uint8,precision=2)
 //   DesaturationTime (uint32)
+//   NoFlyTime (uint32)
 //   EndTissue.CNS (float32,precision=3)
 //   EndTissue.OTU (float32)
 //   EndTissue.OLF (float32,precision=3)
@@ -1511,6 +1533,30 @@ static int traverse_diving_fields(suunto_eonsteel_parser_t *eon, const struct ty
 	if (!strcmp(name, "Conservatism")) {
 		eon->cache.decomodel.conservatism = *(const signed char *)data;
 		eon->cache.initialized |= 1 << DC_FIELD_DECOMODEL;
+		return 0;
+	}
+
+	if (!strcmp(name, "NoFlyTime")) {
+		if (len < 4)
+			return 0;
+		eon->cache.nofly_time = array_uint32_le(data);
+		eon->cache.have |= EON_HAVE_NOFLY_TIME;
+		return 0;
+	}
+
+	if (!strcmp(name, "DesaturationTime")) {
+		if (len < 4)
+			return 0;
+		eon->cache.desaturation_time = array_uint32_le(data);
+		eon->cache.have |= EON_HAVE_DESATURATION_TIME;
+		return 0;
+	}
+
+	if (!strcmp(name, "SurfaceTime")) {
+		if (len < 4)
+			return 0;
+		eon->cache.surface_time = array_uint32_le(data);
+		eon->cache.have |= EON_HAVE_SURFACE_TIME;
 		return 0;
 	}
 
