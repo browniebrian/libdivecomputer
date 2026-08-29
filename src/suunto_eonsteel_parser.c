@@ -1605,7 +1605,15 @@ static int traverse_diving_fields(suunto_eonsteel_parser_t *eon, const struct ty
 	}
 
 	if (!strcmp(name, "Algorithm")) {
-		if (!strcmp((const char *)data, "Suunto Fused RGBM")) {
+		/*
+		 * The EON Steel says "Suunto Fused RGBM", the D5 and EON Core
+		 * say "Suunto Fused2 RGBM", and the technical models spell it
+		 * differently again. Every algorithm this family runs is an
+		 * RGBM variant, so match the family rather than one spelling:
+		 * an exact match drops the deco model of everything but the
+		 * one device the string was written for.
+		 */
+		if (strstr((const char *)data, "RGBM")) {
 			eon->cache.decomodel.type = DC_DECOMODEL_RGBM;
 			eon->cache.initialized |= 1 << DC_FIELD_DECOMODEL;
 		}
