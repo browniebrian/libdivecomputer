@@ -46,6 +46,8 @@ typedef struct suunto_eonsteel_device_t {
 	unsigned char fingerprint[4];
 	suunto_eonsteel_filter_t filter_callback;
 	void *filter_userdata;
+	suunto_eonsteel_directory_t directory_callback;
+	void *directory_userdata;
 } suunto_eonsteel_device_t;
 
 // The EON Steel implements a small filesystem
@@ -613,12 +615,17 @@ get_file_list(suunto_eonsteel_device_t *eon, struct directory_entry **res)
  *
  * Dives with a malformed name are marked for download, so that the
  * download loop reports the error.
+ *
+ * The total number of dives in the directory is returned through stored,
+ * because the count of dives to download cannot describe how far through
+ * the computer's own library a resume has got.
  */
 static unsigned int
-mark_file_list(suunto_eonsteel_device_t *eon, struct directory_entry *list)
+mark_file_list(suunto_eonsteel_device_t *eon, struct directory_entry *list, unsigned int *stored)
 {
 	struct directory_entry *de;
 	unsigned int count = 0;
+	unsigned int total = 0;
 	int skip = 0;
 
 	for (de = list; de; de = de->next) {
@@ -627,7 +634,12 @@ mark_file_list(suunto_eonsteel_device_t *eon, struct directory_entry *list)
 
 		de->download = 0;
 
-		if (skip || de->type != DIRTYPE_FILE)
+		if (de->type != DIRTYPE_FILE)
+			continue;
+
+		total++;
+
+		if (skip)
 			continue;
 
 		if (sscanf(de->name, "%x.LOG", &time) == 1) {
@@ -645,6 +657,9 @@ mark_file_list(suunto_eonsteel_device_t *eon, struct directory_entry *list)
 		de->download = 1;
 		count++;
 	}
+
+	if (stored)
+		*stored = total;
 
 	return count;
 }
@@ -751,6 +766,20 @@ suunto_eonsteel_device_set_filter (dc_device_t *abstract, suunto_eonsteel_filter
 	return DC_STATUS_SUCCESS;
 }
 
+dc_status_t
+suunto_eonsteel_device_set_directory_callback (dc_device_t *abstract, suunto_eonsteel_directory_t callback, void *userdata)
+{
+	suunto_eonsteel_device_t *device = (suunto_eonsteel_device_t *) abstract;
+
+	if (!ISINSTANCE (abstract))
+		return DC_STATUS_INVALIDARGS;
+
+	device->directory_callback = callback;
+	device->directory_userdata = userdata;
+
+	return DC_STATUS_SUCCESS;
+}
+
 static dc_status_t
 suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callback, void *userdata)
 {
@@ -762,6 +791,7 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 	dc_buffer_t *file;
 	char pathname[64];
 	unsigned int time;
+	unsigned int stored = 0;
 	dc_event_progress_t progress = EVENT_PROGRESS_INITIALIZER;
 
 	// Emit a device info event.
@@ -786,7 +816,9 @@ suunto_eonsteel_device_foreach(dc_device_t *abstract, dc_dive_callback_t callbac
 		return DC_STATUS_NOMEMORY;
 	}
 
-	progress.maximum = mark_file_list(eon, de);
+	progress.maximum = mark_file_list(eon, de, &stored);
+	if (eon->directory_callback)
+		eon->directory_callback(stored, progress.maximum, eon->directory_userdata);
 	progress.current = 0;
 	if (progress.maximum)
 		device_event_emit(abstract, DC_EVENT_PROGRESS, &progress);
