@@ -392,6 +392,16 @@ suunto_d9_parser_get_field (dc_parser_t *abstract, dc_field_type_t type, unsigne
 			break;
 		case DC_FIELD_DECOMODEL:
 			decomodel->type = DC_DECOMODEL_RGBM;
+			/* Fixed model assignments documented by Suunto:
+			 * https://www.suunto.com/Support/Suunto-rgbm-dive-algorithms/
+			 * Keep other models generic until their variant is established. */
+			if (parser->model == HELO2 || parser->model == D9tx)
+				decomodel->type = DC_DECOMODEL_SUUNTO_TECHNICAL_RGBM;
+			else if (parser->model == DX)
+				decomodel->type = DC_DECOMODEL_SUUNTO_FUSED_RGBM;
+			else if (parser->model == VYPERAIR || parser->model == COBRA3 ||
+				parser->model == D4i || parser->model == D6i)
+				decomodel->type = DC_DECOMODEL_SUUNTO_RGBM;
 			if (parser->model == D4i ||parser->model == D6i ||
 				parser->model == D9tx || parser->model == ZOOPNOVO_A ||
 				parser->model == ZOOPNOVO_B || parser->model == VYPERNOVO ||

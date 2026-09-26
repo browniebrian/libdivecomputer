@@ -1605,8 +1605,14 @@ static int traverse_diving_fields(suunto_eonsteel_parser_t *eon, const struct ty
 	}
 
 	if (!strcmp(name, "Algorithm")) {
+		/* Match recorded identifiers, not the shared RGBM family substring. */
+		if (len <= 0 || !memchr(data, 0, len))
+			return 0;
 		if (!strcmp((const char *)data, "Suunto Fused RGBM")) {
-			eon->cache.decomodel.type = DC_DECOMODEL_RGBM;
+			eon->cache.decomodel.type = DC_DECOMODEL_SUUNTO_FUSED_RGBM;
+			eon->cache.initialized |= 1 << DC_FIELD_DECOMODEL;
+		} else if (!strcmp((const char *)data, "Suunto Fused2 RGBM")) {
+			eon->cache.decomodel.type = DC_DECOMODEL_SUUNTO_FUSED_RGBM2;
 			eon->cache.initialized |= 1 << DC_FIELD_DECOMODEL;
 		}
 		return 0;

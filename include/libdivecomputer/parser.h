@@ -283,6 +283,11 @@ typedef enum dc_decomodel_type_t {
 	DC_DECOMODEL_VPM,
 	DC_DECOMODEL_RGBM,
 	DC_DECOMODEL_DCIEM,
+	/* Fork extensions: keep upstream and persisted values unchanged. */
+	DC_DECOMODEL_SUUNTO_RGBM = 0x10000,
+	DC_DECOMODEL_SUUNTO_TECHNICAL_RGBM = 0x10001,
+	DC_DECOMODEL_SUUNTO_FUSED_RGBM = 0x10002,
+	DC_DECOMODEL_SUUNTO_FUSED_RGBM2 = 0x10003,
 } dc_decomodel_type_t;
 
 /*
